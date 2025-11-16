@@ -20,6 +20,7 @@ import {
     Paperclip,
     PlusIcon,
     Settings,
+    X,
 } from "lucide-react";
 
 interface UseAutoResizeTextareaProps {
@@ -112,6 +113,15 @@ export function VercelV0Chat() {
         loadSettings();
     }, []);
 
+    // Populate form fields when dialog opens
+    useEffect(() => {
+        if (isDialogOpen && savedSettings) {
+            setProvider(savedSettings.provider);
+            setModel(savedSettings.model);
+            setApiKey(savedSettings.apiKey);
+        }
+    }, [isDialogOpen, savedSettings]);
+
     const handleSaveSettings = async () => {
         if (apiKey && provider && model) {
             setIsLoading(true);
@@ -130,6 +140,24 @@ export function VercelV0Chat() {
             } finally {
                 setIsLoading(false);
             }
+        }
+    };
+
+    const handleClearSettings = async () => {
+        try {
+            // Clear local state
+            setSavedSettings(null);
+            setProvider("");
+            setModel("");
+            setApiKey("");
+            
+            // Clear from localStorage (userId)
+            localStorage.removeItem('userId');
+            
+            toast.success('API settings cleared');
+        } catch (error) {
+            console.error('Failed to clear settings:', error);
+            toast.error('Failed to clear settings');
         }
     };
 
@@ -243,14 +271,38 @@ export function VercelV0Chat() {
                             </button>
                         </div>
                         <div className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setIsDialogOpen(true)}
-                                className="px-2 py-1 rounded-lg text-sm text-zinc-400 transition-colors border border-dashed border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800 flex items-center justify-between gap-1"
-                            >
-                                <Settings className="w-4 h-4" />
-                                API
-                            </button>
+                            {savedSettings ? (
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsDialogOpen(true)}
+                                        className="p-1 rounded-lg text-sm text-zinc-400 transition-colors border border-dashed border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800 flex items-center gap-1"
+                                    >
+                                        <img 
+                                            src={`/assets/${savedSettings.provider}.png`} 
+                                            className="w-4 h-4" 
+                                            alt={savedSettings.provider} 
+                                        />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleClearSettings}
+                                        className="p-1 rounded-lg text-sm text-zinc-400 transition-colors hover:text-zinc-200 hover:bg-zinc-800"
+                                        title="Clear API settings"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsDialogOpen(true)}
+                                    className="px-2 py-1 rounded-lg text-sm text-zinc-400 transition-colors border border-dashed border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800 flex items-center justify-between gap-1"
+                                >
+                                    <Settings className="w-4 h-4" />
+                                    API
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 className="px-2 py-1 rounded-lg text-sm text-zinc-400 transition-colors border border-dashed border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800 flex items-center justify-between gap-1"
