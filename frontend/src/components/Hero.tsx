@@ -1,13 +1,33 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoginModal } from "@/components/LoginModal";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { app } from "@/lib/firebase";
+import { useNavigate } from "react-router-dom";
 
 export const Hero = React.memo(() => {
   const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [user, setUser] = useState(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const auth = getAuth(app);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const handleGetStarted = () => {
-    setLoginModalOpen(true);
+    if (user) {
+      // User is already logged in, navigate to dashboard
+      navigate('/dashboard');
+    } else {
+      // User is not logged in, show login modal
+      setLoginModalOpen(true);
+    }
   };
 
   return (

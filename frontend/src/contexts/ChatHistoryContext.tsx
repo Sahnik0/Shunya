@@ -12,6 +12,7 @@ interface ChatHistoryContextType {
   chatHistory: ChatSession[];
   addChat: (chat: Omit<ChatSession, 'timestamp'>) => void;
   updateChat: (id: string, updates: Partial<ChatSession>) => void;
+  deleteChat: (id: string) => void;
   getRecentChats: (limit?: number) => ChatSession[];
 }
 
@@ -65,6 +66,10 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const deleteChat = (id: string) => {
+    setChatHistory(prev => prev.filter(chat => chat.id !== id));
+  };
+
   const getRecentChats = (limit = 10) => {
     return chatHistory.slice(0, limit);
   };
@@ -74,6 +79,7 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
       chatHistory,
       addChat,
       updateChat,
+      deleteChat,
       getRecentChats
     }}>
       {children}

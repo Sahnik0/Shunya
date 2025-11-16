@@ -4,6 +4,7 @@ import { ShiningText } from "@/components/ui/shining-text";
 import { getApiSettings } from "@/lib/api";
 import { toast } from "sonner";
 import { useChatHistory } from "@/contexts/ChatHistoryContext";
+import { FileTreeView } from "@/components/FileTreeView";
 
 interface FileItem {
     path: string;
@@ -199,9 +200,8 @@ export default function Chat() {
     if (isThinking && showThinkingDelay) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-                <div className="w-full max-w-4xl mx-auto text-center space-y-8">
-                    <ShiningText text="Shunya..." />
-                    <p className="text-sm text-muted-foreground">Analyzing your request...</p>
+                <div className="w-full max-w-4xl mx-auto text-center">
+                    <ShiningText text="Shunya analyzing your request..." />
                 </div>
             </div>
         );
@@ -221,17 +221,7 @@ export default function Chat() {
                     {/* File Structure Panel */}
                     <div className="space-y-4">
                         <h2 className="text-xl font-semibold">Project Structure</h2>
-                        <div className="bg-card border border-border rounded-lg p-4 font-mono text-sm space-y-1">
-                            {fileStructure?.fileStructure.map((item, index) => (
-                                <div 
-                                    key={index}
-                                    className={`${item.type === 'folder' ? 'text-blue-400 font-semibold' : 'text-green-400'}`}
-                                    style={{ paddingLeft: `${(item.path.split('/').length - 1) * 16}px` }}
-                                >
-                                    {item.type === 'folder' ? '📁' : '📄'} {item.path.split('/').pop()}
-                                </div>
-                            ))}
-                        </div>
+                        {fileStructure && <FileTreeView fileStructure={fileStructure.fileStructure} />}
 
                         {/* Dependencies */}
                         {fileStructure?.dependencies && Object.keys(fileStructure.dependencies).length > 0 && (
