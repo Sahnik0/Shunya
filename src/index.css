@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Space-inspired deep blue theme */
+    --background: 220 30% 5%;
+    --foreground: 210 40% 98%;
+
+    --card: 220 25% 8%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 220 25% 8%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 100% 70%;
+    --primary-foreground: 220 30% 5%;
+
+    --secondary: 217 25% 15%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 25% 15%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 200 100% 60%;
+    --accent-foreground: 220 30% 5%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 25% 20%;
+    --input: 217 25% 20%;
+    --ring: 210 100% 70%;
+
+    --radius: 0.75rem;
+
+    /* Custom design tokens */
+    --gradient-hero: linear-gradient(to bottom, hsl(210 40% 98%), hsl(210 40% 98% / 0.95), hsl(210 40% 98% / 0.6));
+    --gradient-button: linear-gradient(to bottom, hsl(210 40% 98%), hsl(210 40% 98% / 0.95), hsl(210 40% 98% / 0.6));
+    --gradient-glow: linear-gradient(135deg, hsl(210 100% 70% / 0.3), hsl(200 100% 60% / 0.3));
+    
+    --shadow-glow: 0 0 60px hsl(210 100% 70% / 0.3);
+    --shadow-card: 0 4px 20px hsl(220 30% 5% / 0.5);
+    
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    --sidebar-background: 220 25% 8%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 210 100% 70%;
+    --sidebar-primary-foreground: 220 30% 5%;
+    --sidebar-accent: 217 25% 15%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 25% 20%;
+    --sidebar-ring: 210 100% 70%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Poppins', sans-serif;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Database light animations */
+@keyframes db-light-1 {
+  0%, 100% {
+    cx: 31;
+    cy: 10;
+  }
+  25% {
+    cx: 31;
+    cy: 25;
+  }
+  50% {
+    cx: 75;
+    cy: 35;
+  }
+  75%, 100% {
+    cx: 100;
+    cy: 45;
+  }
+}
+
+@keyframes db-light-2 {
+  0%, 100% {
+    cx: 77;
+    cy: 10;
+  }
+  25% {
+    cx: 77;
+    cy: 20;
+  }
+  50% {
+    cx: 90;
+    cy: 30;
+  }
+  75%, 100% {
+    cx: 100;
+    cy: 45;
+  }
+}
+
+@keyframes db-light-3 {
+  0%, 100% {
+    cx: 124;
+    cy: 10;
+  }
+  25% {
+    cx: 124;
+    cy: 20;
+  }
+  50% {
+    cx: 110;
+    cy: 30;
+  }
+  75%, 100% {
+    cx: 100;
+    cy: 45;
+  }
+}
+
+@keyframes db-light-4 {
+  0%, 100% {
+    cx: 170;
+    cy: 10;
+  }
+  25% {
+    cx: 170;
+    cy: 25;
+  }
+  50% {
+    cx: 125;
+    cy: 35;
+  }
+  75%, 100% {
+    cx: 100;
+    cy: 45;
+  }
+}
+
+.database.db-light-1 {
+  animation: db-light-1 2s ease-in-out infinite;
+}
+
+.database.db-light-2 {
+  animation: db-light-2 2s ease-in-out infinite;
+  animation-delay: 0.2s;
+}
+
+.database.db-light-3 {
+  animation: db-light-3 2s ease-in-out infinite;
+  animation-delay: 0.4s;
+}
+
+.database.db-light-4 {
+  animation: db-light-4 2s ease-in-out infinite;
+  animation-delay: 0.6s;
+}
