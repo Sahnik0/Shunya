@@ -41,7 +41,7 @@ export function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   return (
-    <div className={`relative h-screen bg-background/95 flex flex-col border-r border-border/50 transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-64'} py-6 ${isCollapsed ? 'px-2' : 'px-3'}`}>
+    <div className={`relative h-screen bg-background/95 flex flex-col border-r border-border/10 transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-64'} py-6 ${isCollapsed ? 'px-2' : 'px-3'}`}>
       <div className="mb-6 px-2 flex items-center justify-between">
         <div className={`overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
           <div className="whitespace-nowrap">

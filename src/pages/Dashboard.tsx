@@ -1,19 +1,19 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAuth } from "firebase/auth";
 import { app } from "@/lib/firebase";
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { User } from "firebase/auth";
 import { WhatsNewDialog } from "@/components/WhatsNewDialog";
 import { Sidebar } from "@/components/Sidebar";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { DashboardNavbar } from "@/components/DashboardNavbar";
-import { Button } from "@/components/ui/button";
+import { VercelV0Chat } from "@/components/VercelV0Chat";
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const auth = getAuth(app);
@@ -33,6 +33,13 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [navigate]);
 
+  // Slow down video playback
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = 0.5; // Slow down to 50% speed
+    }
+  }, []);
+
   if (!user) {
     return <LoadingSpinner />;
   }
@@ -42,80 +49,23 @@ export default function Dashboard() {
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <DashboardNavbar user={user} />
-        <div className="flex-1 p-6 m-4 bg-muted/30 rounded-tl-3xl overflow-auto">
-          <div className="max-w-6xl mx-auto">
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold mb-2">Welcome back, {user.displayName || 'there'}!</h1>
-              <p className="text-muted-foreground">Ready to build something amazing?</p>
-            </div>
-
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              <Card>
-                <CardHeader>
-                  <CardTitle>AI Builder</CardTitle>
-                  <CardDescription>
-                    Create applications with AI assistance
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button className="w-full">Start Building</Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Projects</CardTitle>
-                  <CardDescription>
-                    Manage your AI-generated projects
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button variant="outline" className="w-full">View Projects</Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Analytics</CardTitle>
-                  <CardDescription>
-                    Track your development metrics
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button variant="outline" className="w-full">View Analytics</Button>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="mt-12">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Profile Information</CardTitle>
-                  <CardDescription>
-                    Your account details
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium">Name</label>
-                    <p className="text-muted-foreground">{user.displayName || 'Not provided'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Email</label>
-                    <p className="text-muted-foreground">{user.email}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">GitHub ID</label>
-                    <p className="text-muted-foreground">
-                      {(() => {
-                        const gh = user.providerData.find(p => p.providerId === 'github.com');
-                        return gh ? `@${gh.displayName ?? gh.uid}` : 'Not available';
-                      })()}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+        <div className="flex-1 p-6 ml-4 mt-4 rounded-tl-2xl overflow-hidden flex items-center justify-center relative">
+          {/* Video Background */}
+          <video
+            ref={videoRef}
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover opacity-40"
+            style={{ filter: 'blur(20px)' }}
+          >
+            <source src="/1851190-uhd_3840_2160_25fps.mp4" type="video/mp4" />
+          </video>
+          
+          {/* Content Layer */}
+          <div className="relative z-10 w-full h-full flex items-center justify-center">
+            <VercelV0Chat />
           </div>
         </div>
         <WhatsNewDialog isOpen={showWhatsNew} onClose={() => setShowWhatsNew(false)} />

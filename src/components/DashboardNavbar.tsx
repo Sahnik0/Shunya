@@ -44,7 +44,7 @@ export function DashboardNavbar({ user }: DashboardNavbarProps) {
   };
 
   return (
-    <nav className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50">
+    <nav className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/10">
       <div className="flex items-center justify-end px-6 py-4">
         <div className="flex items-center gap-4">
           <Button variant="outline" size="sm" className="gap-2">
