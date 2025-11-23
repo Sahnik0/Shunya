@@ -7,8 +7,11 @@ import { useChatHistory } from "@/contexts/ChatHistoryContext";
 import { FileTreeView } from "@/components/FileTreeView";
 import { CodePreview } from "@/components/CodePreview";
 import { CodeEditor } from "@/components/CodeEditor";
+import { IterativeChat } from "@/components/IterativeChat";
+import { ReasoningDisplay } from "@/components/ReasoningDisplay";
+import { ShaderAnimation } from "@/components/ShaderAnimation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Code2, Eye, FolderTree } from "lucide-react";
+import { Code2, Eye, FolderTree, MessageSquare } from "lucide-react";
 
 interface FileItem {
     path: string;
@@ -43,6 +46,14 @@ export default function Chat() {
     const [isComplete, setIsComplete] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showThinkingDelay, setShowThinkingDelay] = useState(true);
+    const [previewKey, setPreviewKey] = useState(0); // Force rerender on changes
+    
+    // Reasoning state
+    const [isReasoning, setIsReasoning] = useState(false);
+    const [reasoningText, setReasoningText] = useState('');
+    const [reasoningData, setReasoningData] = useState<any>(null);
+    const [reasoningValidation, setReasoningValidation] = useState<any>(null);
+    const [reasoningInsights, setReasoningInsights] = useState<any>(null);
     
     const eventSourceRef = useRef<EventSource | null>(null);
     const { updateChat } = useChatHistory();
@@ -138,10 +149,32 @@ export default function Chat() {
         switch (data.type) {
             case 'status':
                 setStatus(data.message);
+                // Check if entering reasoning phase
+                if (data.message.includes('Reasoning')) {
+                    setIsReasoning(true);
+                    setReasoningText('');
+                }
                 break;
 
             case 'reasoning_chunk':
-                // Could show reasoning progress if needed
+                setIsReasoning(true);
+                setReasoningText(prev => prev + (data.content || ''));
+                break;
+
+            case 'reasoning_complete':
+                setIsReasoning(false);
+                setReasoningData(data.reasoning);
+                setReasoningValidation(data.validation);
+                setReasoningInsights(data.insights);
+                console.log('🧠 Reasoning complete:', data.reasoning);
+                toast.success('AI reasoning complete!', {
+                    description: `Quality score: ${data.validation?.qualityScore || 'N/A'}/100`
+                });
+                break;
+
+            case 'reasoning_error':
+                setIsReasoning(false);
+                console.warn('⚠️ Reasoning unavailable:', data.message);
                 break;
 
             case 'planning_chunk':
@@ -257,12 +290,27 @@ export default function Chat() {
                     <p className="text-sm text-muted-foreground">{status}</p>
                 </div>
 
+                {/* Reasoning Display - Shows AI's thinking process */}
+                {(isReasoning || reasoningData) && (
+                    <ReasoningDisplay
+                        reasoning={reasoningData}
+                        validation={reasoningValidation}
+                        insights={reasoningInsights}
+                        isStreaming={isReasoning}
+                        streamingText={reasoningText}
+                    />
+                )}
+
                 {/* Main Content with Tabs */}
                 <Tabs defaultValue="preview" className="w-full">
-                    <TabsList className="grid w-full max-w-md grid-cols-3">
+                    <TabsList className="grid w-full max-w-2xl grid-cols-4">
                         <TabsTrigger value="preview" className="flex items-center gap-2">
                             <Eye className="w-4 h-4" />
                             Live Preview
+                        </TabsTrigger>
+                        <TabsTrigger value="chat" className="flex items-center gap-2">
+                            <MessageSquare className="w-4 h-4" />
+                            Chat & Edit
                         </TabsTrigger>
                         <TabsTrigger value="structure" className="flex items-center gap-2">
                             <FolderTree className="w-4 h-4" />
@@ -278,10 +326,12 @@ export default function Chat() {
                     <TabsContent value="preview" className="mt-6">
                         {isComplete && fileStructure ? (
                             <>
-                                <div className="mb-4 text-sm text-muted-foreground">
+                                <div className="mb-4 text-sm text-muted-foreground flex items-center gap-2">
+                                    <Eye className="w-4 h-4" />
                                     Rendering {Object.keys(generatedFiles).length} files
                                 </div>
-                                <CodePreview 
+                                <CodePreview
+                                    key={previewKey}
                                     files={Object.entries(generatedFiles).map(([path, content]) => ({
                                         path,
                                         content
@@ -293,23 +343,126 @@ export default function Chat() {
                                             filesObj[file.path] = file.content;
                                         });
                                         setGeneratedFiles(filesObj);
+                                        setPreviewKey(prev => prev + 1);
                                         toast.success('Files updated with fixes!');
                                     }}
                                 />
                             </>
                         ) : (
-                            <div className="flex flex-col items-center justify-center min-h-[500px] bg-card border border-border rounded-lg">
-                                <div className="text-center space-y-4">
-                                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-                                    <p className="text-muted-foreground">Generating code...</p>
-                                    <p className="text-sm text-muted-foreground">{status}</p>
+                            <div className="relative flex items-center justify-center min-h-[600px] bg-black border border-border rounded-lg overflow-hidden">
+                                <div className="absolute inset-0 w-full h-full">
+                                    <ShaderAnimation />
+                                </div>
+                                <div className="relative z-10 text-center space-y-4 bg-black/50 backdrop-blur-sm p-8 rounded-lg border border-white/10">
+                                    <p className="text-white text-xl font-semibold">Generating Code...</p>
+                                    <p className="text-white/80 text-sm">{status}</p>
                                     {currentFile && (
-                                        <p className="text-xs text-muted-foreground">
-                                            Currently generating: {currentFile}
+                                        <p className="text-white/60 text-xs font-mono">
+                                            {currentFile}
                                         </p>
                                     )}
-                                    <p className="text-xs text-muted-foreground">
-                                        Files generated: {Object.keys(generatedFiles).length}
+                                    <div className="flex items-center justify-center gap-2 pt-2">
+                                        <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                                        <div className="w-2 h-2 bg-white rounded-full animate-pulse delay-75"></div>
+                                        <div className="w-2 h-2 bg-white rounded-full animate-pulse delay-150"></div>
+                                    </div>
+                                    <p className="text-white/60 text-xs">
+                                        Files: {Object.keys(generatedFiles).length}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                    </TabsContent>
+
+                    {/* Iterative Chat Tab */}
+                    <TabsContent value="chat" className="mt-6">
+                        {isComplete && id ? (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Chat Interface */}
+                                <div className="h-[700px]">
+                                    <IterativeChat
+                                        projectId={id}
+                                        userId="user-123" // TODO: Replace with actual user ID from auth
+                                        currentFiles={Object.entries(generatedFiles).map(([path, content]) => ({
+                                            path,
+                                            content
+                                        }))}
+                                        onCodeChange={(changes) => {
+                                            // Apply code changes from AI - AUTO-APPLY TO CODEBASE
+                                            console.log('🔧 Auto-applying AI code changes to codebase:', changes);
+                                            const updatedFiles = { ...generatedFiles };
+                                            let changeCount = 0;
+                                            
+                                            changes.forEach((change: any) => {
+                                                // Normalize file path (handle both /path and path formats)
+                                                const normalizedPath = change.file.startsWith('/') ? change.file.slice(1) : change.file;
+                                                const pathWithSlash = change.file.startsWith('/') ? change.file : '/' + change.file;
+                                                
+                                                if (change.action === 'edit' || change.action === 'create') {
+                                                    const content = change.newContent || change.content;
+                                                    
+                                                    // Update with both path formats to ensure compatibility
+                                                    updatedFiles[normalizedPath] = content;
+                                                    updatedFiles[pathWithSlash] = content;
+                                                    
+                                                    changeCount++;
+                                                    console.log(`✅ ${change.action.toUpperCase()}: ${change.file}`, {
+                                                        contentLength: content?.length,
+                                                        normalizedPath,
+                                                        pathWithSlash
+                                                    });
+                                                } else if (change.action === 'delete') {
+                                                    delete updatedFiles[normalizedPath];
+                                                    delete updatedFiles[pathWithSlash];
+                                                    changeCount++;
+                                                    console.log(`🗑️ DELETED: ${change.file}`);
+                                                }
+                                            });
+                                            
+                                            console.log('📦 Total files after changes:', Object.keys(updatedFiles).length);
+                                            console.log('📝 Updated file paths:', Object.keys(updatedFiles));
+                                            
+                                            setGeneratedFiles(updatedFiles);
+                                            setPreviewKey(prev => prev + 1); // Force preview rerender
+                                            console.log('✅ Codebase updated - triggering preview rerender');
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Live Preview Side-by-Side */}
+                                <div>
+                                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                                        <Eye className="w-5 h-5 text-primary" />
+                                        Live Preview
+                                    </h3>
+                                    <CodePreview
+                                        key={previewKey}
+                                        files={Object.entries(generatedFiles).map(([path, content]) => ({
+                                            path,
+                                            content
+                                        }))}
+                                        fileStructure={fileStructure}
+                                        onFilesUpdated={(updatedFiles) => {
+                                            const filesObj: Record<string, string> = {};
+                                            updatedFiles.forEach(file => {
+                                                filesObj[file.path] = file.content;
+                                            });
+                                            setGeneratedFiles(filesObj);
+                                            setPreviewKey(prev => prev + 1);
+                                            toast.success('Files updated with fixes!');
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center min-h-[500px] bg-card border border-border rounded-lg">
+                                <div className="text-center space-y-4">
+                                    <MessageSquare className="w-16 h-16 text-muted-foreground mx-auto" />
+                                    <p className="text-muted-foreground">
+                                        Chat will be available after code generation completes
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                        You'll be able to request changes and improvements
                                     </p>
                                 </div>
                             </div>

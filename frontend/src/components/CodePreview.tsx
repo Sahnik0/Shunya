@@ -9,9 +9,10 @@ import {
   useSandpack,
 } from '@codesandbox/sandpack-react';
 import { Button } from '@/components/ui/button';
-import { Download, Code2, Eye, Terminal, RefreshCw } from 'lucide-react';
+import { Download, Code2, Eye, Terminal, RefreshCw, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { getApiSettings } from '@/lib/api';
+import { motion, AnimatePresence } from 'framer-motion';
 // @ts-ignore - JSZip types may not be fully compatible
 import JSZip from 'jszip';
 // @ts-ignore - file-saver types
@@ -131,35 +132,126 @@ function ErrorMonitor({ files, fileStructure, onFilesFixed, onFixingStart }: {
   onFixingStart: () => void;
 }) {
   const { listen } = useSandpack();
-  const [hasAttemptedFix, setHasAttemptedFix] = useState(false);
+  const [lastErrorHash, setLastErrorHash] = useState<string>('');
+  const [fixedErrors, setFixedErrors] = useState<Set<string>>(new Set());
+  const [errorCooldown, setErrorCooldown] = useState<boolean>(false);
+  const [lastSuccessTime, setLastSuccessTime] = useState<number>(0);
 
   useEffect(() => {
     const unsubscribe = listen((message: any) => {
-      // Check for console errors and compilation errors
+      let errorMessage = '';
+      let errorType = '';
+
+      // Check for successful compilation - reset error tracking
+      if (message.type === 'done' && message.compilatonError !== true) {
+        setLastSuccessTime(Date.now());
+        // Clear fixed errors after successful build
+        setFixedErrors(new Set());
+        setErrorCooldown(false);
+        return;
+      }
+
+      // Log all messages for debugging (can be removed later)
+      if (message.type !== 'state' && message.type !== 'success') {
+        console.log('📦 Sandpack Message:', message.type, message);
+      }
+
+      // 1. Compilation errors: type="action" action="show-error"
+      if (message.type === 'action' && message.action === 'show-error') {
+        errorType = 'Compilation Error';
+        errorMessage = message.message || message.title || 'Compilation failed';
+        if (message.line) {
+          errorMessage += `\nLine: ${message.line}`;
+        }
+        if (message.column) {
+          errorMessage += `, Column: ${message.column}`;
+        }
+        if (message.path) {
+          errorMessage += `\nFile: ${message.path}`;
+        }
+        console.error('🔴 Compilation Error:', errorMessage);
+      }
+
+      // 2. Notification errors: type="action" action="notification"
+      if (message.type === 'action' && message.action === 'notification' && message.notificationType === 'error') {
+        errorType = 'Build Error';
+        errorMessage = message.title || 'Build notification error';
+        console.error('🔴 Build Error:', errorMessage);
+      }
+
+      // 3. Console errors: type="console"
       if (message.type === 'console' && message.codesandbox === true && message.log) {
         const logs = Array.isArray(message.log) ? message.log : [message.log];
         const errorLogs = logs.filter((log: any) => 
           typeof log === 'object' && (log.method === 'error' || log.method === 'warn')
         );
         
-        if (errorLogs.length > 0 && !hasAttemptedFix) {
-          const errorMessage = errorLogs.map((log: any) => 
+        if (errorLogs.length > 0) {
+          errorType = 'Runtime Error';
+          errorMessage = errorLogs.map((log: any) => 
             log.data ? log.data.join(' ') : ''
           ).join('\n');
           
-          if (errorMessage.includes('Error') || errorMessage.includes('Syntax')) {
-            console.error('🔴 Sandbox Console Error:', errorMessage);
-            setHasAttemptedFix(true);
-            handleSandboxError(errorMessage);
+          if (errorMessage.includes('Error') || errorMessage.includes('Syntax') || errorMessage.includes('Warning')) {
+            console.error('🔴 Console Error:', errorMessage);
+          } else {
+            errorMessage = ''; // Not an actual error
           }
+        }
+      }
+
+      // 4. Done with compilation error: type="done" compilatonError=true
+      if (message.type === 'done' && message.compilatonError === true) {
+        errorType = 'Compilation Failed';
+        errorMessage = 'Build completed with compilation errors';
+        console.error('🔴 Compilation Failed');
+      }
+
+      // If we have an error message, attempt to fix it
+      if (errorMessage) {
+        // Create a hash to prevent fixing the same error multiple times
+        const errorHash = `${errorType}:${errorMessage.substring(0, 100)}`;
+        
+        // Check if we're in cooldown period (5 seconds after last fix attempt)
+        if (errorCooldown) {
+          console.log('⏸️ Error detection in cooldown period, skipping...');
+          return;
+        }
+
+        // Check if this error was already fixed
+        if (fixedErrors.has(errorHash)) {
+          console.log('✅ Error already fixed, skipping re-fix:', errorHash.substring(0, 50));
+          return;
+        }
+        
+        // Check if error is different from last one AND hasn't been seen recently
+        if (errorHash !== lastErrorHash) {
+          // Verify it's not appearing right after a successful build (within 2 seconds)
+          const timeSinceSuccess = Date.now() - lastSuccessTime;
+          if (timeSinceSuccess < 2000) {
+            console.log('⚠️ Error appeared right after success, might be transient, waiting...');
+            return;
+          }
+
+          setLastErrorHash(errorHash);
+          setFixedErrors(prev => new Set(prev).add(errorHash));
+          setErrorCooldown(true);
+          
+          console.log(`🔧 Detected ${errorType}, triggering auto-fix...`);
+          handleSandboxError(`${errorType}: ${errorMessage}`, errorHash);
+          
+          // Reset cooldown after 5 seconds
+          setTimeout(() => {
+            setErrorCooldown(false);
+          }, 5000);
         }
       }
     });
 
     return () => unsubscribe();
-  }, [listen, hasAttemptedFix]);
+  }, [listen, lastErrorHash]);
 
-  const handleSandboxError = async (error: string) => {
+  const handleSandboxError = async (error: string, errorHash: string) => {
     try {
       console.log('🔧 Attempting to fix sandbox error...');
       onFixingStart();
@@ -210,11 +302,21 @@ function ErrorMonitor({ files, fileStructure, onFilesFixed, onFixingStart }: {
         });
 
         onFilesFixed(updatedFiles);
-        setHasAttemptedFix(false); // Allow retry on new errors
+        // Reset error hash after successful fix to allow detecting new errors
+        setLastErrorHash('');
+        setLastSuccessTime(Date.now());
+        console.log('✅ Fix applied successfully, resetting error tracking');
       }
     } catch (err) {
       console.error('Failed to fix error:', err);
       toast.error('Failed to auto-fix the error');
+      // On failure, remove this error from fixed set to allow retry later
+      setFixedErrors(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(errorHash);
+        return newSet;
+      });
+      setLastErrorHash('');
     }
   };
 
@@ -226,12 +328,20 @@ export function CodePreview({ files, fileStructure, onFilesUpdated }: CodePrevie
   const [showConsole, setShowConsole] = useState(true);
   const [isFixingError, setIsFixingError] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
+  const [isRerendering, setIsRerendering] = useState(false);
   
   console.log('🎨 CodePreview rendering with:', files.length, 'files', fileStructure);
   
   const sandpackFiles = useMemo(() => convertToSandpackFiles(files), [files]);
   const template = useMemo(() => getTemplate(fileStructure.projectType), [fileStructure.projectType]);
   const entryFile = useMemo(() => getEntryFile(files, fileStructure.projectType), [files, fileStructure.projectType]);
+
+  // Trigger rerender animation when files change
+  useEffect(() => {
+    setIsRerendering(true);
+    const timer = setTimeout(() => setIsRerendering(false), 1000);
+    return () => clearTimeout(timer);
+  }, [files]);
 
   const customSetup = {
     dependencies: {
@@ -245,33 +355,36 @@ export function CodePreview({ files, fileStructure, onFilesUpdated }: CodePrevie
   const ensureRequiredFiles = () => {
     const required: Record<string, string> = { ...sandpackFiles };
 
-    // Add package.json if not present
-    if (!required['/package.json']) {
-      required['/package.json'] = JSON.stringify({
-        name: 'shunya-project',
-        version: '1.0.0',
-        main: '/src/index.tsx',
-        dependencies: customSetup.dependencies,
-        author: {
-          name: 'Generated by Shunya AI',
-          url: 'https://shunya.ai'
-        },
-        keywords: ['shunya-ai', 'ai-generated'],
-        generator: {
-          name: 'Shunya AI',
-          url: 'https://shunya.ai',
-          generatedAt: new Date().toISOString()
-        }
-      }, null, 2);
-    }
+    // Always add package.json with all dependencies
+    required['/package.json'] = JSON.stringify({
+      name: 'shunya-project',
+      version: '1.0.0',
+      main: '/src/index.tsx',
+      dependencies: {
+        'react': '18.2.0',
+        'react-dom': '18.2.0',
+        ...fileStructure.dependencies
+      },
+      devDependencies: fileStructure.devDependencies || {},
+      author: {
+        name: 'Generated by Shunya AI',
+        url: 'https://shunya.ai'
+      },
+      keywords: ['shunya-ai', 'ai-generated'],
+      generator: {
+        name: 'Shunya AI',
+        url: 'https://shunya.ai',
+        generatedAt: new Date().toISOString()
+      }
+    }, null, 2);
 
-    // Ensure index.html exists
+    // Ensure index.html exists - critical for rendering
     const hasIndexHtml = Object.keys(required).some(path => 
       path.toLowerCase().includes('index.html')
     );
     
     if (!hasIndexHtml) {
-      required['/public/index.html'] = `<!DOCTYPE html>
+      required['/index.html'] = `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8">
@@ -282,30 +395,35 @@ export function CodePreview({ files, fileStructure, onFilesUpdated }: CodePrevie
     <div id="root"></div>
   </body>
 </html>`;
+      console.log('✅ Added missing index.html');
     }
 
-    // Ensure main entry exists for React
+    // Ensure main entry exists for React - critical for app startup
     if (template.includes('react')) {
       const hasMainEntry = Object.keys(required).some(path => 
-        path.includes('index.tsx') || path.includes('index.jsx') || path.includes('main.tsx')
+        path.includes('/src/main.tsx') || path.includes('/src/index.tsx') || path.includes('/src/main.jsx')
       );
       
       if (!hasMainEntry) {
-        required['/src/index.tsx'] = `import React from 'react';
+        required['/src/main.tsx'] = `import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 
-const root = createRoot(document.getElementById('root')!);
+const rootElement = document.getElementById('root');
+if (!rootElement) throw new Error('Root element not found');
+
+const root = createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
 );`;
+        console.log('✅ Added missing main.tsx entry point');
       }
 
       // Ensure App.tsx exists
       const hasApp = Object.keys(required).some(path => 
-        path.includes('/App.tsx') || path.includes('/App.ts') || path.includes('/App.jsx')
+        path.includes('/src/App.tsx') || path.includes('/src/App.ts') || path.includes('/src/App.jsx')
       );
       
       if (!hasApp) {
@@ -313,7 +431,7 @@ root.render(
 
 function App() {
   return (
-    <div style={{ padding: '2rem', textAlign: 'center' }}>
+    <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'system-ui' }}>
       <h1>Hello React!</h1>
       <p>Your app is running successfully.</p>
     </div>
@@ -321,9 +439,11 @@ function App() {
 }
 
 export default App;`;
+        console.log('✅ Added missing App.tsx component');
       }
     }
 
+    console.log('📦 Final required files:', Object.keys(required).length);
     return required;
   };
 
@@ -450,6 +570,12 @@ Generated by Shunya AI
           >
             Split
           </Button>
+          
+          {/* AI Monitoring Indicator */}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/30 rounded-md ml-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+            <span className="text-xs text-blue-500">AI Error Monitor Active</span>
+          </div>
         </div>
         
         <div className="flex items-center gap-2">
@@ -473,24 +599,47 @@ Generated by Shunya AI
       </div>
 
       {/* Sandpack Preview */}
-      <div className="border border-border rounded-lg overflow-hidden bg-[#1e1e1e] min-h-[600px]">
-        {isFixingError && (
-          <div className="bg-yellow-500/10 border-b border-yellow-500/50 p-3 flex items-center gap-2">
-            <RefreshCw className="w-4 h-4 animate-spin text-yellow-500" />
-            <span className="text-sm text-yellow-500">AI is fixing the error... (Attempt {errorCount})</span>
-          </div>
-        )}
+      <motion.div
+        key={files.length}
+        initial={{ opacity: 0.8 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
+        className="border border-border rounded-lg overflow-hidden bg-[#1e1e1e] min-h-[600px]"
+      >
+        <AnimatePresence>
+          {isFixingError && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="bg-yellow-500/10 border-b border-yellow-500/50 p-3 flex items-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4 animate-spin text-yellow-500" />
+              <span className="text-sm text-yellow-500">AI is fixing the error... (Attempt {errorCount})</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <SandpackProvider
+          template={template as any}
           files={finalFiles}
-          customSetup={customSetup}
+          customSetup={{
+            dependencies: {
+              'react': '18.2.0',
+              'react-dom': '18.2.0',
+              ...fileStructure.dependencies
+            },
+            devDependencies: fileStructure.devDependencies || {},
+            entry: entryFile
+          }}
           theme="dark"
           options={{
             activeFile: entryFile,
-            visibleFiles: Object.keys(finalFiles).filter(f => !f.includes('package.json')).slice(0, 5),
+            visibleFiles: Object.keys(finalFiles).filter(f => !f.includes('package.json') && !f.includes('.json')).slice(0, 5),
             autorun: true,
             autoReload: true,
             recompileMode: 'delayed',
             recompileDelay: 500,
+            bundlerURL: undefined,
           }}
         >
           <ErrorMonitor 
@@ -552,7 +701,7 @@ Generated by Shunya AI
             )}
           </SandpackLayout>
         </SandpackProvider>
-      </div>
+      </motion.div>
     </div>
   );
 }

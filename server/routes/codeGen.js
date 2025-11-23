@@ -3,8 +3,10 @@ import LLMService from '../services/llmService.js';
 import CodeSupervisorService from '../services/codeSupervisorService.js';
 import DiagnosticService from '../services/diagnosticService.js';
 import AttributionService from '../services/attributionService.js';
+import VectorService from '../services/vectorService.js';
+import ReasoningService from '../services/reasoningService.js';
+import ProductionValidatorService from '../services/productionValidatorService.js';
 import { createPlanningPrompt, createCodeGenerationPrompt } from '../prompts/codeGeneration.js';
-import { createReasoningPrompt } from '../prompts/reasoning.js';
 
 const router = express.Router();
 
@@ -29,35 +31,49 @@ router.post('/generate', async (req, res) => {
         res.setHeader('Connection', 'keep-alive');
 
         const llmService = new LLMService(provider, apiKey, model);
+        const reasoningService = new ReasoningService(provider, apiKey, model);
 
         // Send initial status
         res.write(`data: ${JSON.stringify({ type: 'status', message: 'Analyzing your request...' })}\n\n`);
 
-        // Step 0: Reasoning phase (optional for better results)
-        res.write(`data: ${JSON.stringify({ type: 'status', message: 'Reasoning about the best approach...' })}\n\n`);
+        // Step 0: Deep Reasoning Phase - Think through the implementation systematically
+        res.write(`data: ${JSON.stringify({ type: 'status', message: '🧠 Reasoning about the best approach...' })}\n\n`);
         
-        const reasoningMessages = createReasoningPrompt(userRequest);
-        let reasoningResponse = '';
+        let reasoning = null;
+        let reasoningText = '';
 
         try {
-            for await (const chunk of llmService.streamCompletion(reasoningMessages)) {
-                reasoningResponse += chunk;
+            // Stream reasoning to client in real-time
+            for await (const chunk of reasoningService.streamReasoning(userRequest, {})) {
+                reasoningText += chunk;
                 res.write(`data: ${JSON.stringify({ type: 'reasoning_chunk', content: chunk })}\n\n`);
             }
 
-            // Parse reasoning (optional, for logging)
-            try {
-                const jsonMatch = reasoningResponse.match(/\{[\s\S]*\}/);
-                if (jsonMatch) {
-                    const reasoning = JSON.parse(jsonMatch[0]);
-                    console.log('🧠 AI Reasoning:', reasoning.reasoning?.understanding);
-                    res.write(`data: ${JSON.stringify({ type: 'reasoning_complete', reasoning: reasoning })}\n\n`);
-                }
-            } catch (e) {
-                console.log('⚠️ Could not parse reasoning, continuing...');
+            // Parse and validate reasoning
+            reasoning = reasoningService.parseReasoningResponse(reasoningText);
+            const validation = reasoningService.validateReasoning(reasoning);
+            const insights = reasoningService.extractInsights(reasoning);
+            
+            console.log('🧠 Reasoning Quality Score:', validation.qualityScore);
+            console.log('✅ Reasoning Strengths:', validation.strengths.join(', '));
+            if (validation.issues.length > 0) {
+                console.log('⚠️ Reasoning Issues:', validation.issues.join(', '));
             }
+            
+            // Send complete reasoning with insights
+            res.write(`data: ${JSON.stringify({ 
+                type: 'reasoning_complete', 
+                reasoning: reasoning,
+                validation: validation,
+                insights: insights
+            })}\n\n`);
+            
         } catch (reasoningError) {
-            console.log('⚠️ Reasoning step failed, continuing with planning...', reasoningError.message);
+            console.log('⚠️ Reasoning failed, continuing with standard planning...', reasoningError.message);
+            res.write(`data: ${JSON.stringify({ 
+                type: 'reasoning_error', 
+                message: 'Advanced reasoning unavailable, using standard approach' 
+            })}\n\n`);
         }
 
         // Step 1: Generate file structure
@@ -91,7 +107,26 @@ router.post('/generate', async (req, res) => {
         res.write(`data: ${JSON.stringify({ type: 'file_structure', data: fileStructure })}\n\n`);
 
         // Step 2: Generate code for each file
-        const files = fileStructure.fileStructure.filter(item => item.type === 'file');
+        // Filter out problematic config files that cause ESM/CommonJS conflicts
+        const files = fileStructure.fileStructure
+            .filter(item => item.type === 'file')
+            .filter(item => {
+                const path = item.path.toLowerCase();
+                // Remove config files that cause module errors
+                if (path.includes('postcss.config.js')) {
+                    console.log('⚠️ Skipping postcss.config.js to avoid ESM/CommonJS conflict');
+                    return false;
+                }
+                if (path.includes('tailwind.config.js')) {
+                    console.log('⚠️ Skipping tailwind.config.js to avoid ESM/CommonJS conflict');
+                    return false;
+                }
+                if (path.match(/\.config\.js$/)) {
+                    console.log(`⚠️ Skipping ${path} to avoid potential ESM/CommonJS conflict`);
+                    return false;
+                }
+                return true;
+            });
         let generatedFiles = [];
 
         for (let i = 0; i < files.length; i++) {
@@ -243,7 +278,48 @@ router.post('/generate', async (req, res) => {
 
         res.write(`data: ${JSON.stringify({ type: 'status', message: 'All diagnostics complete!' })}\n\n`);
 
-        // Step 5: Add Shunya attribution
+        // Step 5: Production Validation - Check for ESM/CommonJS conflicts and other production issues
+        res.write(`data: ${JSON.stringify({ type: 'status', message: 'Validating for production deployment...' })}\n\n`);
+        
+        const productionValidator = new ProductionValidatorService();
+        const productionValidation = productionValidator.validateForProduction(fileStructure, generatedFiles);
+        
+        if (!productionValidation.isValid) {
+            console.log('⚠️ Production validation found issues:', productionValidation.issues.length);
+            
+            res.write(`data: ${JSON.stringify({ 
+                type: 'production_issues', 
+                issues: productionValidation.issues.map(i => ({
+                    severity: i.severity,
+                    message: i.message,
+                    file: i.file,
+                    fix: i.fix
+                }))
+            })}\n\n`);
+            
+            // Apply automatic fixes
+            if (productionValidation.fixes) {
+                res.write(`data: ${JSON.stringify({ type: 'status', message: 'Applying production fixes...' })}\n\n`);
+                
+                const fixed = productionValidator.applyFixes(generatedFiles, fileStructure, productionValidation.fixes);
+                generatedFiles = fixed.files;
+                fileStructure = fixed.fileStructure;
+                
+                console.log('✅ Applied production fixes');
+                res.write(`data: ${JSON.stringify({ 
+                    type: 'production_fixed', 
+                    message: 'Production issues automatically fixed' 
+                })}\n\n`);
+            }
+        } else {
+            console.log('✅ Production validation passed');
+            res.write(`data: ${JSON.stringify({ 
+                type: 'production_validated', 
+                message: 'Code is production-ready' 
+            })}\n\n`);
+        }
+
+        // Step 6: Add Shunya attribution
         res.write(`data: ${JSON.stringify({ type: 'status', message: 'Adding attribution...' })}\n\n`);
         
         const attribution = new AttributionService();
@@ -254,6 +330,35 @@ router.post('/generate', async (req, res) => {
         generatedFiles.push(metadataFile);
         
         console.log('✅ Added Shunya attribution to all files');
+
+        // Step 7: Auto-save project state to vector database
+        res.write(`data: ${JSON.stringify({ type: 'status', message: 'Saving project state...' })}\n\n`);
+        
+        try {
+            const vectorService = new VectorService();
+            
+            // Generate unique project ID from request (use timestamp + hash of request)
+            const projectId = `project_${Date.now()}`;
+            const userId = req.body.userId || 'user-default'; // TODO: Get from auth
+            
+            // Save initial code snapshot
+            await vectorService.storeCodeSnapshot(
+                projectId,
+                userId,
+                generatedFiles,
+                `Initial project: ${fileStructure.description}`
+            );
+            
+            console.log('✅ Project state saved to vector database');
+            res.write(`data: ${JSON.stringify({ 
+                type: 'project_saved', 
+                projectId,
+                message: 'Project state saved for chat context' 
+            })}\n\n`);
+        } catch (vectorError) {
+            console.error('⚠️ Failed to save project state:', vectorError.message);
+            // Don't fail the entire request, just log it
+        }
 
         // Send completion event
         res.write(`data: ${JSON.stringify({ 

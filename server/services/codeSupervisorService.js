@@ -10,7 +10,21 @@ class CodeSupervisorService {
         try {
             console.log('🔍 Supervisor: Starting code validation...');
             
-            // First, validate dependencies match config files
+            // First, validate ESM/CommonJS compatibility
+            const esmIssues = this.validateModuleFormat(fileStructure, generatedFiles);
+            if (esmIssues.length > 0) {
+                console.log('⚠️ Supervisor: Found ESM/CommonJS issues:', esmIssues);
+                // Remove problematic files
+                generatedFiles = generatedFiles.filter(f => {
+                    const hasIssue = esmIssues.some(issue => issue.file === f.path);
+                    if (hasIssue) {
+                        console.log(`🗑️ Removing problematic file: ${f.path}`);
+                    }
+                    return !hasIssue;
+                });
+            }
+            
+            // Second, validate dependencies match config files
             const dependencyIssues = this.validateDependencies(fileStructure, generatedFiles);
             if (dependencyIssues.length > 0) {
                 console.log('⚠️ Supervisor: Found dependency issues:', dependencyIssues);
@@ -82,6 +96,45 @@ class CodeSupervisorService {
             console.error(`❌ Supervisor: Failed to fix ${filePath}:`, error);
             return fileContent; // Return original if fix fails
         }
+    }
+
+    // Validate ESM/CommonJS compatibility
+    validateModuleFormat(fileStructure, files) {
+        const issues = [];
+        
+        // Check if package.json has "type": "module"
+        const hasESMPackageJson = fileStructure.projectType || 
+            JSON.stringify(fileStructure).includes('"type": "module"');
+        
+        files.forEach(file => {
+            // Check for CommonJS syntax in ESM projects
+            if (file.content) {
+                const hasModuleExports = file.content.includes('module.exports');
+                const hasRequire = file.content.match(/require\s*\(/g);
+                
+                if (hasModuleExports || hasRequire) {
+                    issues.push({
+                        severity: 'error',
+                        message: `File uses CommonJS syntax (module.exports/require) which conflicts with ESM module type`,
+                        file: file.path,
+                        fix: 'Convert to ESM syntax: use "export default" and "import" instead'
+                    });
+                }
+            }
+            
+            // Check for problematic config files
+            const lowerPath = file.path.toLowerCase();
+            if (lowerPath.includes('postcss.config.js') || lowerPath.includes('tailwind.config.js')) {
+                issues.push({
+                    severity: 'error',
+                    message: 'Config file will cause ESM/CommonJS conflict',
+                    file: file.path,
+                    fix: 'Remove this file - use built-in defaults or .mjs extension'
+                });
+            }
+        });
+        
+        return issues;
     }
 
     // Helper to validate React app structure

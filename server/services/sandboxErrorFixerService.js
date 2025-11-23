@@ -76,6 +76,26 @@ CRITICAL RULES:
 8. For missing package errors: REMOVE the import and simplify the code
 9. Sandpack runs in-browser and has limited package support
 
+COMPLETE IMPLEMENTATION REQUIREMENTS - ABSOLUTE:
+10. EVERY function MUST have a complete implementation (no empty bodies)
+11. NEVER use placeholder comments (// TODO, // implement this, // rest of code here)
+12. ALL edge cases MUST be handled (null checks, error handling, validation)
+13. ALL async functions MUST have try-catch blocks
+14. ALL user inputs MUST be validated
+15. ALL array operations MUST check existence
+16. ALL object property access MUST handle null/undefined
+17. Write the ENTIRE function body with ALL logic
+
+PROFESSIONAL UI REQUIREMENTS:
+18. Create unique, catchy designs with professional polish
+19. Use creative visual elements: glassmorphism, bold typography, interesting layouts
+20. Choose striking color schemes: monochrome + vibrant accent, dark elegance, high contrast
+21. Add engaging animations: micro-interactions, smooth reveals, hover transformations
+22. NO generic templates, NO boring designs, NO childish elements
+23. Inspire with: Apple (premium), Stripe (elegant), Framer (creative), Railway (bold)
+23. NO animated emojis, NO cartoon graphics, NO childish elements
+24. High contrast for readability
+
 OUTPUT FORMAT:
 Return a JSON object with this structure:
 {

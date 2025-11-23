@@ -31,6 +31,11 @@ COMMON FIXES NEEDED:
 5. Remove duplicates: One state manager, not multiple
 6. Fix types: Add proper TypeScript definitions
 7. Clean files: Remove unused API/config files
+8. Complete functions: Add implementations to ALL function declarations
+9. Add edge cases: Null checks, error handling, validation everywhere
+10. Enhance UI: Make designs unique, catchy, and memorable - not generic or boring
+11. Add creativity: Use interesting visual elements, modern effects, engaging interactions
+12. Professional polish: Sophisticated aesthetics, premium feel, refined details
 
 OUTPUT FORMAT:
 Return a JSON object with COMPLETE fixed files:
@@ -55,6 +60,13 @@ MANDATORY CHECKS:
 5. ✓ All imports resolve correctly
 6. ✓ TypeScript types are correct
 7. ✓ No unused/conflicting files
+8. ✓ ALL functions have complete implementations (no empty bodies or TODOs)
+9. ✓ ALL edge cases handled (null checks, error handling, validation)
+10. ✓ ALL async operations have try-catch blocks
+11. ✓ UI is unique, catchy, and professional (not generic or boring)
+12. ✓ Design has personality and creative flair (not template-like)
+13. ✓ Visual elements are engaging and modern
+14. ✓ Interactive elements have satisfying, polished interactions
 
 Fix ALL issues and return complete working code.`;
 
