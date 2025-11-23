@@ -1,15 +1,15 @@
 import express from 'express';
-import SandboxErrorFixerService from '../services/sandboxErrorFixerService.js';
+import SmartSandboxErrorFixerService from '../services/smartSandboxErrorFixerService.js';
 
 const router = express.Router();
 
 /**
  * POST /api/sandbox/fix-error
- * Receives sandbox errors and returns fixed files
+ * Receives sandbox errors and returns fixed files with reasoning
  */
 router.post('/fix-error', async (req, res) => {
     try {
-        const { error, files, fileStructure, apiSettings } = req.body;
+        const { error, files, fileStructure, apiSettings, useSmartFix = true } = req.body;
 
         if (!error || !files || !fileStructure || !apiSettings) {
             return res.status(400).json({
@@ -19,27 +19,51 @@ router.post('/fix-error', async (req, res) => {
         }
 
         const { provider, apiKey, model } = apiSettings;
-        const fixer = new SandboxErrorFixerService(provider, apiKey, model);
+        
+        // Use smart fixer with reasoning by default
+        const fixer = new SmartSandboxErrorFixerService(provider, apiKey, model);
 
-        console.log('🔧 Received sandbox error fix request');
+        console.log('🔧 Received sandbox error fix request (Smart Mode)');
         console.log('Error:', error.substring(0, 200) + '...');
 
-        const result = await fixer.fixSandboxErrors(error, files, fileStructure);
+        // Set up SSE for streaming reasoning updates
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+
+        const sendUpdate = (data) => {
+            res.write(`data: ${JSON.stringify(data)}\n\n`);
+        };
+
+        const result = await fixer.fixWithReasoning(
+            error,
+            files,
+            fileStructure,
+            sendUpdate
+        );
 
         if (result.success) {
             console.log('✅ Fixed', Object.keys(result.fixedFiles).length, 'files');
-            return res.json({
+            sendUpdate({
+                type: 'complete',
                 success: true,
                 fixedFiles: result.fixedFiles,
-                explanation: result.explanation
+                explanation: result.explanation,
+                reasoning: result.reasoning,
+                analysis: result.analysis,
+                verification: result.verification
             });
         } else {
             console.error('❌ Failed to fix errors');
-            return res.status(500).json({
+            sendUpdate({
+                type: 'error',
                 success: false,
-                error: result.error
+                error: result.error,
+                reasoning: result.reasoning
             });
         }
+
+        res.end();
 
     } catch (error) {
         console.error('Sandbox error fix failed:', error);

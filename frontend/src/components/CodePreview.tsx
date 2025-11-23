@@ -13,6 +13,7 @@ import { Download, Code2, Eye, Terminal, RefreshCw, Sparkles } from 'lucide-reac
 import { toast } from 'sonner';
 import { getApiSettings } from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ErrorFixingReasoning } from './ErrorFixingReasoning';
 // @ts-ignore - JSZip types may not be fully compatible
 import JSZip from 'jszip';
 // @ts-ignore - file-saver types
@@ -34,6 +35,14 @@ interface CodePreviewProps {
   files: GeneratedFile[];
   fileStructure: FileStructure;
   onFilesUpdated?: (files: GeneratedFile[]) => void;
+}
+
+interface ReasoningStage {
+  stage: string;
+  message: string;
+  progress: number;
+  reasoning?: any;
+  result?: any;
 }
 
 // Convert generated files to Sandpack format
@@ -125,11 +134,13 @@ function getEntryFile(files: GeneratedFile[], projectType: string): string {
 }
 
 // Error Monitor Component - watches for sandbox errors and auto-fixes them
-function ErrorMonitor({ files, fileStructure, onFilesFixed, onFixingStart }: {
+function ErrorMonitor({ files, fileStructure, onFilesFixed, onFixingStart, onReasoningUpdate, stopSignal }: {
   files: GeneratedFile[];
   fileStructure: FileStructure;
   onFilesFixed: (files: GeneratedFile[]) => void;
   onFixingStart: () => void;
+  onReasoningUpdate: (stage: ReasoningStage) => void;
+  stopSignal?: { stopped: boolean };
 }) {
   const { listen } = useSandpack();
   const [lastErrorHash, setLastErrorHash] = useState<string>('');
