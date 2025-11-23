@@ -120,6 +120,10 @@ GET /api/health
 
 ## Features
 
+- ✅ **Live Code Preview & Execution** - Run generated code directly in the browser
+- ✅ **Interactive Code Editor** - Edit and preview code in real-time with Sandpack
+- ✅ **Multi-Framework Support** - React, Next.js, Vue, Vanilla JS, and more
+- ✅ **Download Projects** - Export generated code as ZIP files
 - ✅ MongoDB user settings persistence
 - ✅ API provider configuration (OpenAI, Gemini, Groq)
 - ✅ Secure backend API with CORS
@@ -127,6 +131,23 @@ GET /api/health
 - ✅ Real-time toast notifications
 - ✅ Dropdown collision detection
 - ✅ Responsive UI with glassmorphism design
+- ✅ Chat history management
+- ✅ File tree visualization
+
+## What's New
+
+### Live Preview Feature 🎉
+
+Shunya now supports **live code preview** similar to Lovable, v0, and other vibe coding tools:
+
+- **In-Browser Execution**: Generated code runs directly in the browser using Sandpack
+- **Split View**: View code and preview side-by-side
+- **Console Output**: Debug with integrated console
+- **File Explorer**: Navigate through generated files
+- **Download**: Export projects as ready-to-use ZIP files
+- **Multi-Tab Interface**: Switch between Live Preview, Structure, and Raw Code views
+
+See [LIVE_PREVIEW_DOCS.md](./LIVE_PREVIEW_DOCS.md) for detailed documentation.
 
 ## Build
 

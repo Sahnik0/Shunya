@@ -100,7 +100,7 @@ export function VercelV0Chat() {
 
     const providers = {
         openai: ['gpt-3.5-turbo', 'gpt-3.5-turbo-16k', 'gpt-4', 'gpt-4-32k', 'gpt-4-turbo', 'gpt-4-turbo-preview', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-vision-preview'],
-        gemini: ['gemini-1.0-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro-vision', 'gemini-1.5-pro-latest'],
+        gemini: ['gemini-1.0-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-pro-vision', 'gemini-1.5-pro-latest'],
         groq: ['llama2-70b-4096', 'mixtral-8x7b-32768', 'gemma-7b-it', 'llama3-8b-8192', 'llama3-70b-8192', 'llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'gpt-oss-120b', 'gpt-oss-20b', 'whisper-large-v3', 'whisper-large-v3-turbo']
     };
 
@@ -166,39 +166,36 @@ export function VercelV0Chat() {
         }
     };
 
+    const handleSubmit = () => {
+        if (value.trim()) {
+            const userInput = value.trim();
+            
+            // Generate a random chat ID
+            const chatId = Math.random().toString(36).substring(2, 15);
+            
+            // Add chat to history
+            addChat({
+                id: chatId,
+                title: userInput.length > 50 ? userInput.substring(0, 50) + '...' : userInput,
+                userRequest: userInput,
+                status: 'active'
+            });
+            
+            // Show thinking animation
+            setIsThinking(true);
+            
+            // Navigate to chat route with user request
+            navigate(`/chat/${chatId}`, { state: { userRequest: userInput } });
+            
+            setValue("");
+            adjustHeight(true);
+        }
+    };
+
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            if (value.trim()) {
-                const userInput = value.trim();
-                const userInputLower = userInput.toLowerCase();
-
-                // Check if it's an instruction (contains keywords like make, create, build, etc.)
-                const instructionKeywords = ['make', 'create', 'build', 'design', 'develop', 'generate', 'add', 'implement'];
-                const isInstruction = instructionKeywords.some(keyword => userInputLower.includes(keyword));
-
-                if (isInstruction) {
-                    // Generate a random chat ID
-                    const chatId = Math.random().toString(36).substring(2, 15);
-                    
-                    // Add chat to history
-                    addChat({
-                        id: chatId,
-                        title: userInput.length > 50 ? userInput.substring(0, 50) + '...' : userInput,
-                        userRequest: userInput,
-                        status: 'active'
-                    });
-                    
-                    // Show thinking animation
-                    setIsThinking(true);
-                    
-                    // Navigate to chat route with user request
-                    navigate(`/chat/${chatId}`, { state: { userRequest: userInput } });
-                }
-
-                setValue("");
-                adjustHeight(true);
-            }
+            handleSubmit();
         }
     };
 
@@ -349,11 +346,13 @@ export function VercelV0Chat() {
                             </button>
                             <button
                                 type="button"
+                                onClick={handleSubmit}
+                                disabled={!value.trim()}
                                 className={cn(
                                     "px-1.5 py-1.5 rounded-lg text-sm transition-colors border border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800 flex items-center justify-between gap-1",
                                     value.trim()
-                                        ? "bg-white text-black"
-                                        : "text-zinc-400"
+                                        ? "bg-white text-black hover:bg-zinc-100"
+                                        : "text-zinc-400 cursor-not-allowed"
                                 )}
                             >
                                 <ArrowUpIcon
