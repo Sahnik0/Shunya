@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   SandpackProvider, 
   SandpackLayout, 
@@ -147,6 +147,15 @@ function ErrorMonitor({ files, fileStructure, onFilesFixed, onFixingStart, onRea
   const [fixedErrors, setFixedErrors] = useState<Set<string>>(new Set());
   const [errorCooldown, setErrorCooldown] = useState<boolean>(false);
   const [lastSuccessTime, setLastSuccessTime] = useState<number>(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Watch for stop signal and abort ongoing requests
+  useEffect(() => {
+    if (stopSignal?.stopped && abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  }, [stopSignal?.stopped]);
 
   useEffect(() => {
     const unsubscribe = listen((message: any) => {
@@ -263,6 +272,10 @@ function ErrorMonitor({ files, fileStructure, onFilesFixed, onFixingStart, onRea
   }, [listen, lastErrorHash]);
 
   const handleSandboxError = async (error: string, errorHash: string) => {
+    // Create abort controller for cancellation support
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    
     try {
       console.log('🔧 Attempting to fix sandbox error...');
       onFixingStart();
@@ -274,6 +287,7 @@ function ErrorMonitor({ files, fileStructure, onFilesFixed, onFixingStart, onRea
         return;
       }
 
+      // Use fetch with streaming for SSE
       const response = await fetch('http://localhost:5000/api/sandbox/fix-error', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -282,22 +296,59 @@ function ErrorMonitor({ files, fileStructure, onFilesFixed, onFixingStart, onRea
           files,
           fileStructure,
           apiSettings
-        })
+        }),
+        signal: controller.signal
       });
 
       if (!response.ok) {
         throw new Error('Failed to fix error');
       }
 
-      const result = await response.json();
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalResult: any = null;
 
-      if (result.success && result.fixedFiles) {
-        console.log('✅ Files fixed:', Object.keys(result.fixedFiles));
-        toast.success(result.explanation || 'Error fixed!');
+      // Read SSE stream
+      while (reader) {
+        // Check if cancelled
+        if (stopSignal.stopped) {
+          reader.cancel();
+          console.log('🛑 Error fixing cancelled by user');
+          break;
+        }
+        
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6));
+            
+            if (data.type === 'complete') {
+              finalResult = data;
+            } else if (data.type === 'error') {
+              throw new Error(data.error || 'Error fixing failed');
+            } else {
+              // Update reasoning UI with progress
+              onReasoningUpdate(data);
+            }
+          }
+        }
+      }
+
+      // Apply the final result (only if not cancelled)
+      if (!stopSignal.stopped && finalResult?.success && finalResult?.fixedFiles) {
+        console.log('✅ Files fixed:', Object.keys(finalResult.fixedFiles));
+        toast.success(finalResult.explanation || 'Error fixed!');
 
         // Update files with fixed versions
         const updatedFiles = files.map(file => {
-          const fixedContent = result.fixedFiles[file.path] || result.fixedFiles[`/${file.path}`];
+          const fixedContent = finalResult.fixedFiles[file.path] || finalResult.fixedFiles[`/${file.path}`];
           if (fixedContent) {
             return { ...file, content: fixedContent };
           }
@@ -305,7 +356,7 @@ function ErrorMonitor({ files, fileStructure, onFilesFixed, onFixingStart, onRea
         });
 
         // Add any new files from the fix
-        Object.entries(result.fixedFiles).forEach(([path, content]) => {
+        Object.entries(finalResult.fixedFiles).forEach(([path, content]) => {
           const exists = files.some(f => f.path === path || `/${f.path}` === path);
           if (!exists) {
             updatedFiles.push({ path, content: content as string });
@@ -340,8 +391,25 @@ export function CodePreview({ files, fileStructure, onFilesUpdated }: CodePrevie
   const [isFixingError, setIsFixingError] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
   const [isRerendering, setIsRerendering] = useState(false);
+  const [reasoningStage, setReasoningStage] = useState<ReasoningStage | null>(null);
+  const [stopSignal] = useState({ stopped: false });
+  const [showReasoning, setShowReasoning] = useState(false);
   
   console.log('🎨 CodePreview rendering with:', files.length, 'files', fileStructure);
+  
+  // Handle reasoning updates from error fixer
+  const handleReasoningUpdate = (stage: ReasoningStage) => {
+    setReasoningStage(stage);
+    setShowReasoning(true);
+  };
+  
+  // Handle stop button
+  const handleStopFixing = () => {
+    stopSignal.stopped = true;
+    setShowReasoning(false);
+    setIsFixingError(false);
+    toast.info('Error fixing cancelled');
+  };
   
   const sandpackFiles = useMemo(() => convertToSandpackFiles(files), [files]);
   const template = useMemo(() => getTemplate(fileStructure.projectType), [fileStructure.projectType]);
@@ -647,9 +715,9 @@ Generated by Shunya AI
             activeFile: entryFile,
             visibleFiles: Object.keys(finalFiles).filter(f => !f.includes('package.json') && !f.includes('.json')).slice(0, 5),
             autorun: true,
-            autoReload: true,
+            autoReload: !isFixingError, // Disable auto-reload during error fixing to prevent lag
             recompileMode: 'delayed',
-            recompileDelay: 500,
+            recompileDelay: isFixingError ? 2000 : 500, // Longer delay during error fixing
             bundlerURL: undefined,
           }}
         >
@@ -659,6 +727,7 @@ Generated by Shunya AI
             onFilesFixed={(fixedFiles) => {
               if (onFilesUpdated) {
                 setIsFixingError(false);
+                setShowReasoning(false);
                 onFilesUpdated(fixedFiles);
               }
             }}
@@ -666,6 +735,8 @@ Generated by Shunya AI
               setIsFixingError(true);
               setErrorCount(prev => prev + 1);
             }}
+            onReasoningUpdate={handleReasoningUpdate}
+            stopSignal={stopSignal}
           />
           <SandpackLayout className="!border-0">
             {/* Code Editor - shown in 'code' or 'split' mode */}
@@ -713,6 +784,14 @@ Generated by Shunya AI
           </SandpackLayout>
         </SandpackProvider>
       </motion.div>
+      
+      {/* Reasoning Display - Fixed bottom-right corner */}
+      <ErrorFixingReasoning
+        isVisible={showReasoning}
+        currentStage={reasoningStage}
+        onStop={handleStopFixing}
+        onClose={() => setShowReasoning(false)}
+      />
     </div>
   );
 }
